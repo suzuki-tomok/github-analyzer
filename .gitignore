@@ -1,0 +1,28 @@
+# Environment
+.env
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite3
+
+# IDE
+.idea/
+.vscode/
+
+# Claude Code
+.claude/
+
+# Testing
+.pytest_cache/
+.coverage
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+logs/
