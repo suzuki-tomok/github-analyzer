@@ -6,6 +6,14 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  GEMINI_API_KEY: dummy
+  GEMINI_MODEL: gemini-3-flash-preview
+  DATABASE_URL: sqlite:///./test.db
+  GITHUB_CLIENT_ID: dummy
+  GITHUB_CLIENT_SECRET: dummy
+  JWT_SECRET_KEY: dummy-secret-key-for-testing
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -13,14 +21,6 @@ jobs:
     defaults:
       run:
         working-directory: backend
-
-    env:
-      GEMINI_API_KEY: dummy
-      GEMINI_MODEL: gemini-3-flash-preview
-      DATABASE_URL: sqlite:///./test.db
-      GITHUB_CLIENT_ID: dummy
-      GITHUB_CLIENT_SECRET: dummy
-      JWT_SECRET_KEY: dummy-secret-key-for-testing
 
     steps:
       - uses: actions/checkout@v4
