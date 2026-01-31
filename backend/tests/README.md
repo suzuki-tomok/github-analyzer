@@ -8,6 +8,7 @@
 - pytest-asyncio
 - pytest-cov
 - httpx（TestClient用）
+- ruff（静的解析・フォーマット）
 
 ### セットアップ
 ```bash
@@ -27,11 +28,28 @@ pytest --cov=app --cov-report=term-missing
 
 # HTMLで表示
 pytest --cov=app --cov-report=html
-backend/htmlcov/index.htmlをブラウザで開く
+# backend/htmlcov/index.htmlをブラウザで開く
 
 # 特定ファイル
 pytest tests/routers/test_auth.py -v
 pytest tests/routers/test_analyses.py -v
+```
+
+### 静的解析（ruff）
+```bash
+cd backend
+
+# Lintチェック
+ruff check app/
+
+# 自動修正
+ruff check app/ --fix
+
+# フォーマット
+ruff format app/
+
+# フォーマットチェック（変更しない）
+ruff format app/ --check
 ```
 
 ### テストポリシー
