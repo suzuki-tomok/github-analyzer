@@ -43,16 +43,16 @@ async def fetch_commits_from_github(
         raise AppException(
             400,
             ErrorCode.INVALID_REPO_URL,
-            "Invalid repo_url format. Expected: https://github.com/owner/repo"
+            "Invalid repo_url format. Expected: https://github.com/owner/repo",
         )
-    
+
     logger.debug(f"GitHub API | Fetching commits | {owner}/{repo} | branch: {branch}")
-    
+
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/vnd.github.v3+json",
     }
-    
+
     # commit一覧取得
     async with httpx.AsyncClient() as client:
         response = await client.get(
@@ -60,49 +60,49 @@ async def fetch_commits_from_github(
             params={"sha": branch, "per_page": limit},
             headers=headers,
         )
-    
+
     if response.status_code != 200:
         error_msg = response.json().get("message", "Unknown error")
         logger.warning(f"GitHub API | Error | {response.status_code} | {error_msg}")
         raise AppException(
-            400,
-            ErrorCode.GITHUB_API_ERROR,
-            f"GitHub API error: {error_msg}"
+            400, ErrorCode.GITHUB_API_ERROR, f"GitHub API error: {error_msg}"
         )
-    
+
     commits_data = response.json()
     logger.info(f"GitHub API | Success | {len(commits_data)} commits fetched")
-    
+
     # 各commitの詳細を取得してテキスト化
     lines = []
     async with httpx.AsyncClient() as client:
         for commit_data in commits_data:
             sha = commit_data["sha"]
-            
+
             detail_response = await client.get(
                 f"https://api.github.com/repos/{owner}/{repo}/commits/{sha}",
                 headers=headers,
             )
-            
+
             if detail_response.status_code != 200:
                 continue
-            
+
             detail = detail_response.json()
-            
+
             lines.append(f"=== Commit: {sha[:7]} ===")
             lines.append(f"Author: {detail['commit']['author']['name']}")
             lines.append(f"Date: {detail['commit']['author']['date']}")
             lines.append(f"Message: {detail['commit']['message']}")
             lines.append("Files:")
-            
+
             for f in detail.get("files", []):
-                lines.append(f"  - {f.get('filename', '')} (+{f.get('additions', 0)}, -{f.get('deletions', 0)})")
+                lines.append(
+                    f"  - {f.get('filename', '')} (+{f.get('additions', 0)}, -{f.get('deletions', 0)})"
+                )
                 patch = f.get("patch", "")
                 if patch:
                     lines.append(f"    Diff: {patch[:200]}...")
-            
+
             lines.append("")
-    
+
     return "\n".join(lines)
 
 
@@ -123,8 +123,10 @@ async def create_analysis(
     """
     分析を実行してDBに保存
     """
-    logger.info(f"Analysis | Start | user: {current_user.id} | repo: {request.repo_url}")
-    
+    logger.info(
+        f"Analysis | Start | user: {current_user.id} | repo: {request.repo_url}"
+    )
+
     # 1. GitHub APIからcommit取得
     parsed_log = await fetch_commits_from_github(
         request.repo_url,
@@ -132,7 +134,7 @@ async def create_analysis(
         request.limit,
         current_user.github_access_token,
     )
-    
+
     # 2. Geminiで分析
     logger.debug("Gemini API | Start analysis")
     try:
@@ -141,11 +143,9 @@ async def create_analysis(
     except Exception as e:
         logger.error(f"Gemini API | Error | {type(e).__name__}: {str(e)}")
         raise AppException(
-            500,
-            ErrorCode.GEMINI_API_ERROR,
-            f"Gemini API error: {str(e)}"
+            500, ErrorCode.GEMINI_API_ERROR, f"Gemini API error: {str(e)}"
         )
-    
+
     # 3. DBに保存
     analysis = Analysis(
         user_id=current_user.id,
@@ -157,9 +157,9 @@ async def create_analysis(
     db.add(analysis)
     db.commit()
     db.refresh(analysis)
-    
+
     logger.info(f"Analysis | Complete | id: {analysis.id}")
-    
+
     # 4. 結果を返す
     return SuccessResponse(
         data=AnalysisResponse(
@@ -187,12 +187,15 @@ def list_analyses(
     """
     ログインユーザーの分析履歴一覧を取得
     """
-    analyses = db.query(Analysis).filter(
-        Analysis.user_id == current_user.id
-    ).order_by(Analysis.created_at.desc()).all()
-    
+    analyses = (
+        db.query(Analysis)
+        .filter(Analysis.user_id == current_user.id)
+        .order_by(Analysis.created_at.desc())
+        .all()
+    )
+
     logger.debug(f"List analyses | user: {current_user.id} | count: {len(analyses)}")
-    
+
     return SuccessResponse(
         data=[
             AnalysisListItem(
@@ -224,14 +227,18 @@ def get_analysis(
     """
     分析の詳細を取得
     """
-    analysis = db.query(Analysis).filter(
-        Analysis.id == analysis_id,
-        Analysis.user_id == current_user.id,
-    ).first()
-    
+    analysis = (
+        db.query(Analysis)
+        .filter(
+            Analysis.id == analysis_id,
+            Analysis.user_id == current_user.id,
+        )
+        .first()
+    )
+
     if not analysis:
         raise AppException(404, ErrorCode.ANALYSIS_NOT_FOUND, "Analysis not found")
-    
+
     return SuccessResponse(
         data=AnalysisResponse(
             id=analysis.id,
@@ -262,19 +269,23 @@ def update_analysis(
     """
     分析のメモを更新
     """
-    analysis = db.query(Analysis).filter(
-        Analysis.id == analysis_id,
-        Analysis.user_id == current_user.id,
-    ).first()
-    
+    analysis = (
+        db.query(Analysis)
+        .filter(
+            Analysis.id == analysis_id,
+            Analysis.user_id == current_user.id,
+        )
+        .first()
+    )
+
     if not analysis:
         raise AppException(404, ErrorCode.ANALYSIS_NOT_FOUND, "Analysis not found")
-    
+
     analysis.memo = request.memo
     db.commit()
-    
+
     logger.info(f"Update memo | id: {analysis_id}")
-    
+
     return SuccessResponse(data={"message": "Updated"})
 
 
@@ -293,17 +304,21 @@ def delete_analysis(
     """
     分析を削除
     """
-    analysis = db.query(Analysis).filter(
-        Analysis.id == analysis_id,
-        Analysis.user_id == current_user.id,
-    ).first()
-    
+    analysis = (
+        db.query(Analysis)
+        .filter(
+            Analysis.id == analysis_id,
+            Analysis.user_id == current_user.id,
+        )
+        .first()
+    )
+
     if not analysis:
         raise AppException(404, ErrorCode.ANALYSIS_NOT_FOUND, "Analysis not found")
-    
+
     db.delete(analysis)
     db.commit()
-    
+
     logger.info(f"Delete analysis | id: {analysis_id}")
-    
+
     return SuccessResponse(data={"message": "Deleted"})

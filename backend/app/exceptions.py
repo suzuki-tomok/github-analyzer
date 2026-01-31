@@ -9,29 +9,31 @@ from app.logger import logger
 
 class ErrorCode(str, Enum):
     """エラーコード一覧"""
+
     # 認証系
     INVALID_TOKEN = "INVALID_TOKEN"
     TOKEN_EXPIRED = "TOKEN_EXPIRED"
     USER_NOT_FOUND = "USER_NOT_FOUND"
     GITHUB_AUTH_FAILED = "GITHUB_AUTH_FAILED"
-    
+
     # リクエスト系
     INVALID_REPO_URL = "INVALID_REPO_URL"
     INVALID_REQUEST = "INVALID_REQUEST"
-    
+
     # リソース系
     ANALYSIS_NOT_FOUND = "ANALYSIS_NOT_FOUND"
-    
+
     # 外部API系
     GITHUB_API_ERROR = "GITHUB_API_ERROR"
     GEMINI_API_ERROR = "GEMINI_API_ERROR"
-    
+
     # サーバー系
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
 class AppException(Exception):
     """アプリケーション共通の例外"""
+
     def __init__(self, status_code: int, code: ErrorCode, message: str):
         self.status_code = status_code
         self.code = code
@@ -44,7 +46,7 @@ async def app_exception_handler(request: Request, exc: AppException):
     logger.warning(
         f"AppException | {exc.code.value} | {exc.status_code} | {exc.message}"
     )
-    
+
     return JSONResponse(
         status_code=exc.status_code,
         content={

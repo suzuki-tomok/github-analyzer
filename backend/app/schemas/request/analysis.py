@@ -4,21 +4,9 @@ import re
 
 
 class AnalysisRequest(BaseModel):
-    repo_url: str = Field(
-        ...,
-        min_length=1,
-        examples=["https://github.com/user/repo"]
-    )
-    branch: str = Field(
-        default="main",
-        min_length=1,
-        max_length=255
-    )
-    limit: int = Field(
-        default=30,
-        ge=1,
-        le=30
-    )
+    repo_url: str = Field(..., min_length=1, examples=["https://github.com/user/repo"])
+    branch: str = Field(default="main", min_length=1, max_length=255)
+    limit: int = Field(default=30, ge=1, le=30)
 
     @field_validator("repo_url")
     @classmethod

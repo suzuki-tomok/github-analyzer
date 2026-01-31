@@ -11,7 +11,7 @@ client = genai.Client(api_key=settings.gemini_api_key)
 
 def analyze_commits(parsed_log: str) -> dict:
     """Geminiにgit logを渡してスコアとレポートを取得"""
-    
+
     # JSONスキーマを定義
     schema = {
         "type": "object",
@@ -26,7 +26,14 @@ def analyze_commits(parsed_log: str) -> dict:
                     "commit_message": {"type": "integer"},
                     "activity": {"type": "integer"},
                 },
-                "required": ["test", "comment", "commit_size", "commit_frequency", "commit_message", "activity"],
+                "required": [
+                    "test",
+                    "comment",
+                    "commit_size",
+                    "commit_frequency",
+                    "commit_message",
+                    "activity",
+                ],
             },
             "report": {
                 "type": "object",
@@ -38,12 +45,19 @@ def analyze_commits(parsed_log: str) -> dict:
                     "commit_message": {"type": "string"},
                     "activity": {"type": "string"},
                 },
-                "required": ["test", "comment", "commit_size", "commit_frequency", "commit_message", "activity"],
+                "required": [
+                    "test",
+                    "comment",
+                    "commit_size",
+                    "commit_frequency",
+                    "commit_message",
+                    "activity",
+                ],
             },
         },
         "required": ["scores", "report"],
     }
-    
+
     prompt = f"""
 以下のgit logを分析して、開発者の評価をしてください。
 
@@ -58,7 +72,7 @@ def analyze_commits(parsed_log: str) -> dict:
 - commit_message: メッセージの質（Conventional Commits準拠など）
 - activity: 稼働の安定性
 """
-    
+
     response = client.models.generate_content(
         model=settings.gemini_model,
         contents=prompt,
@@ -67,7 +81,7 @@ def analyze_commits(parsed_log: str) -> dict:
             response_schema=schema,
         ),
     )
-    
+
     result = json.loads(response.text)
-    
+
     return result

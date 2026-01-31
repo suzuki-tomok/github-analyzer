@@ -1,7 +1,6 @@
 # app/schemas/response/analysis.py
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
 
 
 class Scores(BaseModel):

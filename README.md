@@ -1,90 +1,95 @@
 # github-analyzer
 
-GitHubリポジトリをAIで分析し、開発者の評価スコアとレポートを生成するAPI
+## テスト
 
-## 技術スタック
+### 技術スタック
 
-- FastAPI
-- Google Gemini API
-- SQLAlchemy
-- GitHub OAuth + JWT
-- httpx
-- python-jose
+- pytest
+- pytest-asyncio
+- pytest-cov
+- httpx（TestClient用）
+- ruff（静的解析・フォーマット）
 
-## 必要環境
-
-- Python 3.11+
-
-## セットアップ(Windows11)
+### セットアップ
 ```bash
 cd backend
-python -m venv venv
-source venv/Scripts/activate
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn app.main:app --reload --port 8001
+pip install -r requirements-dev.txt
 ```
 
-## ライブラリ追加時
+### 実行方法
 ```bash
-pip install ライブラリ名
-pip freeze > requirements.txt
+cd backend
+
+# 全テスト
+pytest -v
+
+# カバレッジ付き
+pytest --cov=app --cov-report=term-missing
+
+# HTMLで表示
+pytest --cov=app --cov-report=html
+# backend/htmlcov/index.htmlをブラウザで開く
+
+# 特定ファイル
+pytest tests/routers/test_auth.py -v
+pytest tests/routers/test_analyses.py -v
 ```
 
-## GitHub OAuth認証フロー
+### 静的解析（ruff）
+```bash
+cd backend
 
-1. 下記URLにブラウザでアクセス（CLIENT_IDは.envの値）
+# Lintチェック
+ruff check app/
+
+# 自動修正
+ruff check app/ --fix
+
+# フォーマット
+ruff format app/
+
+# フォーマットチェック（変更しない）
+ruff format app/ --check
 ```
-https://github.com/login/oauth/authorize?client_id=YOUR_CLIENT_ID&scope=read:user,repo
-```
-2. GitHubで「Authorize」を押す
-3. リダイレクト先のURLから`?code=xxxxx`をコピー
-4. `/auth/github/callback`にcodeをPOST
-5. 返ってきた`access_token`（JWT）を使って認証
 
-## API
+### テストポリシー
 
-### 認証
-| Method | Endpoint | 説明 |
-|--------|----------|------|
-| POST | /auth/github/callback | GitHub OAuth（ログイン/新規登録） |
-| GET | /auth/me | ユーザー情報取得（JWT必須） |
+#### 1. エンドポイント × ステータスコード
 
-### 分析
-| Method | Endpoint | 説明 |
-|--------|----------|------|
-| POST | /analyses | 分析実行 |
-| GET | /analyses | 履歴一覧 |
-| GET | /analyses/{id} | 詳細取得 |
-| PUT | /analyses/{id} | メモ更新 |
-| DELETE | /analyses/{id} | 削除 |
+各APIエンドポイントに対して、返りうるHTTPステータスコードを網羅する。
 
-## 評価項目
+| ステータス | 意味 |
+|-----------|------|
+| 200 | 正常系 |
+| 401 | 認証エラー（トークンなし/不正/期限切れ） |
+| 404 | リソースなし（存在しないID/他人のデータ） |
+| 422 | バリデーションエラー（不正な入力） |
 
-| 項目 | 説明 |
-|------|------|
-| test | テストコードの有無・品質 |
-| comment | コメントの適切さ |
-| commit_size | 1コミットあたりの変更量 |
-| commit_frequency | コミット頻度 |
-| commit_message | コミットメッセージの質 |
-| activity | 稼働の安定性 |
+#### 2. 境界値テスト
 
-## TODO
+Pydanticスキーマの制約に対して、境界値をテストする。
 
-- [x] プロジェクト構成
-- [x] Gemini API連携
-- [x] DB設計・SQLAlchemy
-- [x] GitHub OAuth認証
-- [x] JWT認証
-- [x] /auth/me エンドポイント
-- [x] 分析履歴CRUD
-- [x] ログ設計（リクエスト/レスポンス/処理時間）
-- [x] カスタムエラーハンドリング（ErrorCode）
-- [ ] pytest
-- [ ] ER図
-- [ ] シーケンス図
-- [ ] Docker化
-- [ ] CI/CD（GitHub Actions）
-- [ ] フロントエンド
-- [ ] AWSデプロイ
+| 項目 | 制約 | OKケース | NGケース |
+|------|------|----------|----------|
+| limit | 1〜30 | 1, 30 | 31 |
+| memo | max 1000文字 | 1000文字 | 1001文字 |
+
+#### 3. 認可テスト
+
+「自分のデータしか触れない」ことを確認する。
+
+- test_userが作成したデータに対して
+- other_userでアクセス → 404
+
+#### 4. 外部APIモック
+
+GitHub API、Gemini APIは本物を叩かない。
+
+- `unittest.mock.patch` で差し替え
+- 自分のコードのロジックだけをテスト
+
+#### 5. DB状態確認
+
+データ変更系のAPIでは、実際にDBの状態が変わっていることを確認する。
+
+- DELETE後にレコードが消えているか
