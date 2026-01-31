@@ -1,0 +1,12 @@
+# backend/.dockerignore
+__pycache__
+*.pyc
+*.pyo
+.env
+.git
+.gitignore
+venv
+.pytest_cache
+htmlcov
+.coverage
+*.db

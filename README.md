@@ -71,6 +71,45 @@ https://github.com/login/oauth/authorize?client_id=YOUR_CLIENT_ID&scope=read:use
 | commit_message | コミットメッセージの質 |
 | activity | 稼働の安定性 |
 
+## Docker
+
+### 起動
+```bash
+cd backend
+docker-compose up --build
+```
+
+### 停止
+```bash
+Ctrl + C
+```
+
+または
+```bash
+docker-compose down
+```
+
+### アクセス
+```
+http://localhost:8001/docs
+```
+
+### ファイル構成
+
+| ファイル | 役割 |
+|----------|------|
+| Dockerfile | イメージの作り方（レシピ） |
+| docker-compose.yml | コンテナの起動設定 |
+| .dockerignore | イメージに含めないファイル |
+
+### 環境ごとのDB
+
+| 環境 | DB |
+|------|-----|
+| ローカル開発 | SQLite（app.db） |
+| Docker ローカル | SQLite（app.db） |
+| AWS 本番 | RDS（PostgreSQL） |
+
 ## TODO
 
 - [x] プロジェクト構成
@@ -83,8 +122,8 @@ https://github.com/login/oauth/authorize?client_id=YOUR_CLIENT_ID&scope=read:use
 - [x] ログ設計（リクエスト/レスポンス/処理時間）
 - [x] カスタムエラーハンドリング（ErrorCode）
 - [x] pytest
-- [ ] CI（GitHub Actions + ruff）
-- [ ] Docker化
+- [x] CI（GitHub Actions + ruff）
+- [x] Docker化
 - [ ] AWSデプロイ
 - [ ] ER図
 - [ ] シーケンス図
