@@ -125,5 +125,5 @@ http://localhost:8001/docs
 - [x] CI（GitHub Actions + ruff）
 - [x] Docker化
 - [ ] AWSデプロイ
-- [ ] ER図
-- [ ] シーケンス図
+- [x] ER図
+- [x] シーケンス図
