@@ -1,0 +1,392 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "github-analyzer - ECS Fargate + RDS PostgreSQL + ALB"
+
+# ============================================================
+# Parameters - スタック作成時に指定する値
+# ============================================================
+Parameters:
+  DBMasterPassword:
+    Type: String
+    NoEcho: true
+    Description: "RDS master password"
+    MinLength: 8
+
+  GeminiApiKey:
+    Type: String
+    NoEcho: true
+    Description: "Google Gemini API Key"
+
+  GeminiModel:
+    Type: String
+    Default: "gemini-2.0-flash"
+
+  GitHubClientId:
+    Type: String
+    Description: "GitHub OAuth Client ID"
+
+  GitHubClientSecret:
+    Type: String
+    NoEcho: true
+    Description: "GitHub OAuth Client Secret"
+
+  JwtSecretKey:
+    Type: String
+    NoEcho: true
+    Default: "my-secret-key-12345"
+    Description: "JWT signing key"
+
+  # ECRリポジトリはスタック外で管理（イメージが先に存在する必要があるため）
+  ImageUri:
+    Type: String
+    Description: "ECR image URI (e.g. 123456789.dkr.ecr.ap-northeast-1.amazonaws.com/github-analyzer:latest)"
+
+# ============================================================
+# Resources
+# ============================================================
+Resources:
+
+  # ==========================================================
+  # VPC & Network
+  # ==========================================================
+
+  # --- VPC本体 ---
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: github-analyzer-vpc
+
+  # --- Internet Gateway（VPCからインターネットへの出入口）---
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: github-analyzer-igw
+
+  # IGWをVPCにアタッチ
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # --- Public Subnets（ALB + ECS を配置）---
+  # AZ分散のため2つ作成（ALBの要件）
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: github-analyzer-public-1
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: github-analyzer-public-2
+
+  # --- Private Subnets（RDS を配置）---
+  # RDSのサブネットグループにはAZ2つ必要
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.10.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: github-analyzer-private-1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: github-analyzer-private-2
+
+  # --- Route Table（Public Subnet → IGW へのルーティング）---
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: github-analyzer-public-rt
+
+  # 0.0.0.0/0 → IGW（インターネットへの通信を許可）
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  # Public Subnet にルートテーブルを関連付け
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  # ==========================================================
+  # Security Groups
+  # ==========================================================
+
+  # ALB用: インターネットからHTTP/HTTPSを受け付ける
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB - allow HTTP/HTTPS from internet
+      GroupName: github-analyzer-alb-sg
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  # ECS用: ALBからのみポート8000を許可
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS - allow traffic from ALB only
+      GroupName: github-analyzer-ecs-sg
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+
+  # RDS用: ECSからのみポート5432を許可
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS - allow traffic from ECS only
+      GroupName: github-analyzer-rds-sg
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+
+  # ==========================================================
+  # RDS (PostgreSQL)
+  # ==========================================================
+
+  # RDS用サブネットグループ（Private Subnet × 2）
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: github-analyzer DB subnet group
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  # RDSインスタンス本体
+  # DeletionPolicy: Delete → スタック削除時にDBも削除
+  # SkipFinalSnapshot: true → 削除時にスナップショットを残さない
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties:
+      DBInstanceIdentifier: github-analyzer-db
+      Engine: postgres
+      EngineVersion: "17.6"
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: 20
+      MaxAllocatedStorage: 20
+      StorageEncrypted: true
+      MasterUsername: postgres
+      MasterUserPassword: !Ref DBMasterPassword
+      DBName: github_analyzer
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 0
+      DeleteAutomatedBackups: true
+      SkipFinalSnapshot: true
+
+  # ==========================================================
+  # ALB (Application Load Balancer)
+  # ==========================================================
+
+  # ALB本体
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: github-analyzer-alb
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+
+  # ターゲットグループ（ECSタスクをIPで登録）
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: github-analyzer-tg
+      VpcId: !Ref VPC
+      Protocol: HTTP
+      Port: 8000
+      TargetType: ip
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+
+  # リスナー（HTTP:80 → ターゲットグループへ転送）
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  # ==========================================================
+  # ECS (Fargate)
+  # ==========================================================
+
+  # ECSクラスター
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: github-analyzer-cluster
+
+  # タスク実行ロール（ECRからのイメージpull、CloudWatch Logsへの書き込みに必要）
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: github-analyzer-task-execution-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  # CloudWatch Logs ロググループ（7日間保持）
+  ECSLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/github-analyzer
+      RetentionInDays: 7
+
+  # タスク定義（コンテナの設定）
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: github-analyzer-task
+      Cpu: "256"          # 0.25 vCPU
+      Memory: "512"       # 0.5 GB
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: github-analyzer
+          Image: !Ref ImageUri
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          # 環境変数（DATABASE_URLはRDSエンドポイントを自動参照）
+          Environment:
+            - Name: DATABASE_URL
+              Value: !Sub "postgresql://postgres:${DBMasterPassword}@${Database.Endpoint.Address}:5432/github_analyzer"
+            - Name: GEMINI_API_KEY
+              Value: !Ref GeminiApiKey
+            - Name: GEMINI_MODEL
+              Value: !Ref GeminiModel
+            - Name: GITHUB_CLIENT_ID
+              Value: !Ref GitHubClientId
+            - Name: GITHUB_CLIENT_SECRET
+              Value: !Ref GitHubClientSecret
+            - Name: JWT_SECRET_KEY
+              Value: !Ref JwtSecretKey
+          # ログ設定（CloudWatch Logsに出力）
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ECSLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  # ECSサービス（タスクの起動・ALBとの紐付けを管理）
+  # DependsOn: ALBListener → リスナーが先に作成されている必要がある
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: ALBListener
+    Properties:
+      ServiceName: github-analyzer-service
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          # Public Subnetに配置（Gemini API / GitHub APIへの外向き通信が必要）
+          # NAT Gateway不使用（$32/月の節約）のためPublic Subnetに配置
+          # セキュリティはSGでALBからのみアクセス許可することで担保
+          AssignPublicIp: ENABLED
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+      LoadBalancers:
+        - ContainerName: github-analyzer
+          ContainerPort: 8000
+          TargetGroupArn: !Ref TargetGroup
+
+# ============================================================
+# Outputs - スタック作成後に確認できる値
+# ============================================================
+Outputs:
+  APIURL:
+    Description: "API endpoint URL"
+    Value: !Sub "http://${ALB.DNSName}"
+
+  SwaggerURL:
+    Description: "Swagger UI URL"
+    Value: !Sub "http://${ALB.DNSName}/docs"
+
+  RDSEndpoint:
+    Description: "RDS endpoint"
+    Value: !GetAtt Database.Endpoint.Address
