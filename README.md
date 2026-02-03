@@ -11,6 +11,13 @@ GitHubリポジトリをAIで分析し、開発者の評価スコアとレポー
 - httpx
 - python-jose
 
+## インフラ（AWS）
+
+- ECS Fargate
+- RDS (PostgreSQL)
+- ALB
+- ECR
+
 ## 必要環境
 
 - Python 3.11+
@@ -124,6 +131,6 @@ http://localhost:8001/docs
 - [x] pytest
 - [x] CI（GitHub Actions + ruff）
 - [x] Docker化
-- [ ] AWSデプロイ
+- [x] AWSデプロイ
 - [x] ER図
 - [x] シーケンス図
