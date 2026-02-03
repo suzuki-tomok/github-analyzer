@@ -133,6 +133,7 @@ http://localhost:8001/docs
 - [x] pytest
 - [x] CI（GitHub Actions + ruff）
 - [x] Docker化
-- [x] AWSデプロイ
+- [x] AWSデプロイ（ECS Fargate + RDS + ALB）
+- [x] IaC（CloudFormation）
 - [x] ER図
 - [x] シーケンス図
