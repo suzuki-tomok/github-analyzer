@@ -10,6 +10,8 @@ GitHubリポジトリをAIで分析し、開発者の評価スコアとレポー
 - GitHub OAuth + JWT
 - httpx
 - python-jose
+- Docker
+- pytest / ruff / GitHub Actions (CI)
 
 ## インフラ（AWS）
 
