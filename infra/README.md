@@ -27,6 +27,9 @@ aws ecr create-repository --repository-name github-analyzer --region ap-northeas
 ### イメージpush
 
 ```bash
+# アカウント調査
+aws sts get-caller-identity --query "Account" --output text
+
 # ECRログイン
 aws ecr get-login-password --region ap-northeast-1 | \
   docker login --username AWS --password-stdin \
@@ -45,14 +48,18 @@ docker push \
 
 ## Step 2: スタック作成（起動）
 
+> ⚠️ cloudformation.yaml のコメントに日本語（全角文字）が含まれていると
+> `file://` で読み込めない。`file://` でエラーが出る場合は英語コメント版を使用すること。
+
 ```bash
 aws cloudformation create-stack \
   --stack-name github-analyzer \
-  --template-body file://infra/cloudformation/main.yaml \
+  --template-body file://../infra/cloudformation.yaml \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameters \
     ParameterKey=DBMasterPassword,ParameterValue=<DBパスワード> \
     ParameterKey=GeminiApiKey,ParameterValue=<Gemini APIキー> \
+    ParameterKey=GeminiModel,ParameterValue=<Gemini Model> \
     ParameterKey=GitHubClientId,ParameterValue=<GitHub Client ID> \
     ParameterKey=GitHubClientSecret,ParameterValue=<GitHub Client Secret> \
     ParameterKey=JwtSecretKey,ParameterValue=<JWT秘密鍵> \
@@ -62,7 +69,9 @@ aws cloudformation create-stack \
 作成状況の確認:
 
 ```bash
-aws cloudformation describe-stacks --stack-name github-analyzer --query "Stacks[0].StackStatus"
+aws cloudformation describe-stacks \
+  --stack-name github-analyzer \
+  --query "Stacks[0].StackStatus"
 ```
 
 `CREATE_COMPLETE` になれば完了（10〜15分）。
@@ -78,8 +87,13 @@ aws cloudformation describe-stacks \
 ---
 
 ## Step 3: GitHub OAuth設定
-
 ```
+Step 1: ブラウザで以下にアクセス
+https://github.com/login/oauth/authorize?client_id=Ov23li7OfGHhIqG0vuAZ&scope=read:user,repo
+Step 2: GitHubで「Authorize」を押す
+Step 3: リダイレクトされたURLからcodeをコピー
+http://github-analyzer-alb-899831337.ap-northeast-1.elb.amazonaws.com/auth/github/callback?code=ここの文字列
+
 GitHub → Settings → Developer settings → OAuth Apps → 対象アプリ
 ```
 

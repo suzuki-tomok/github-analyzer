@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: "github-analyzer - ECS Fargate + RDS PostgreSQL + ALB"
 
 # ============================================================
-# Parameters - スタック作成時に指定する値
+# Parameters
 # ============================================================
 Parameters:
   DBMasterPassword:
@@ -18,7 +18,7 @@ Parameters:
 
   GeminiModel:
     Type: String
-    Default: "gemini-2.0-flash"
+    Default: "gemini-3-flash-preview"
 
   GitHubClientId:
     Type: String
@@ -35,7 +35,7 @@ Parameters:
     Default: "my-secret-key-12345"
     Description: "JWT signing key"
 
-  # ECRリポジトリはスタック外で管理（イメージが先に存在する必要があるため）
+  # ECR repository is managed outside of this stack (image must exist before stack creation)
   ImageUri:
     Type: String
     Description: "ECR image URI (e.g. 123456789.dkr.ecr.ap-northeast-1.amazonaws.com/github-analyzer:latest)"
@@ -49,7 +49,6 @@ Resources:
   # VPC & Network
   # ==========================================================
 
-  # --- VPC本体 ---
   VPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -60,7 +59,7 @@ Resources:
         - Key: Name
           Value: github-analyzer-vpc
 
-  # --- Internet Gateway（VPCからインターネットへの出入口）---
+  # Internet Gateway - entry point from VPC to internet
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
@@ -68,15 +67,15 @@ Resources:
         - Key: Name
           Value: github-analyzer-igw
 
-  # IGWをVPCにアタッチ
+  # Attach IGW to VPC
   AttachGateway:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
       VpcId: !Ref VPC
       InternetGatewayId: !Ref InternetGateway
 
-  # --- Public Subnets（ALB + ECS を配置）---
-  # AZ分散のため2つ作成（ALBの要件）
+  # --- Public Subnets (ALB + ECS) ---
+  # Two subnets in different AZs (required by ALB)
   PublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
@@ -99,8 +98,8 @@ Resources:
         - Key: Name
           Value: github-analyzer-public-2
 
-  # --- Private Subnets（RDS を配置）---
-  # RDSのサブネットグループにはAZ2つ必要
+  # --- Private Subnets (RDS) ---
+  # Two subnets in different AZs (required by RDS subnet group)
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
@@ -121,7 +120,7 @@ Resources:
         - Key: Name
           Value: github-analyzer-private-2
 
-  # --- Route Table（Public Subnet → IGW へのルーティング）---
+  # --- Route Table (Public Subnet -> IGW) ---
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -130,7 +129,7 @@ Resources:
         - Key: Name
           Value: github-analyzer-public-rt
 
-  # 0.0.0.0/0 → IGW（インターネットへの通信を許可）
+  # 0.0.0.0/0 -> IGW (allow outbound internet access)
   PublicRoute:
     Type: AWS::EC2::Route
     DependsOn: AttachGateway
@@ -139,7 +138,7 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
 
-  # Public Subnet にルートテーブルを関連付け
+  # Associate route table with public subnets
   PublicSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
@@ -156,7 +155,7 @@ Resources:
   # Security Groups
   # ==========================================================
 
-  # ALB用: インターネットからHTTP/HTTPSを受け付ける
+  # ALB: allow HTTP/HTTPS from internet
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -173,7 +172,7 @@ Resources:
           ToPort: 443
           CidrIp: 0.0.0.0/0
 
-  # ECS用: ALBからのみポート8000を許可
+  # ECS: allow port 8000 from ALB only
   ECSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -186,7 +185,7 @@ Resources:
           ToPort: 8000
           SourceSecurityGroupId: !Ref ALBSecurityGroup
 
-  # RDS用: ECSからのみポート5432を許可
+  # RDS: allow port 5432 from ECS only
   RDSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -203,7 +202,7 @@ Resources:
   # RDS (PostgreSQL)
   # ==========================================================
 
-  # RDS用サブネットグループ（Private Subnet × 2）
+  # DB subnet group (Private Subnet x 2)
   DBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
@@ -212,9 +211,9 @@ Resources:
         - !Ref PrivateSubnet1
         - !Ref PrivateSubnet2
 
-  # RDSインスタンス本体
-  # DeletionPolicy: Delete → スタック削除時にDBも削除
-  # SkipFinalSnapshot: true → 削除時にスナップショットを残さない
+  # RDS instance
+  # DeletionPolicy: Delete - delete DB when stack is deleted
+  # SkipFinalSnapshot: true - no snapshot on deletion
   Database:
     Type: AWS::RDS::DBInstance
     DeletionPolicy: Delete
@@ -235,13 +234,12 @@ Resources:
       PubliclyAccessible: false
       BackupRetentionPeriod: 0
       DeleteAutomatedBackups: true
-      SkipFinalSnapshot: true
+      DeletionProtection: false
 
   # ==========================================================
   # ALB (Application Load Balancer)
   # ==========================================================
 
-  # ALB本体
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -254,7 +252,7 @@ Resources:
       SecurityGroups:
         - !Ref ALBSecurityGroup
 
-  # ターゲットグループ（ECSタスクをIPで登録）
+  # Target group (register ECS tasks by IP)
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -266,7 +264,7 @@ Resources:
       HealthCheckPath: /
       HealthCheckProtocol: HTTP
 
-  # リスナー（HTTP:80 → ターゲットグループへ転送）
+  # Listener (HTTP:80 -> forward to target group)
   ALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -281,13 +279,12 @@ Resources:
   # ECS (Fargate)
   # ==========================================================
 
-  # ECSクラスター
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: github-analyzer-cluster
 
-  # タスク実行ロール（ECRからのイメージpull、CloudWatch Logsへの書き込みに必要）
+  # Task execution role (required for ECR image pull and CloudWatch Logs)
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -302,14 +299,14 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
 
-  # CloudWatch Logs ロググループ（7日間保持）
+  # CloudWatch Logs log group (retain 7 days)
   ECSLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: /ecs/github-analyzer
       RetentionInDays: 7
 
-  # タスク定義（コンテナの設定）
+  # Task definition (container settings)
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -326,7 +323,7 @@ Resources:
           PortMappings:
             - ContainerPort: 8000
               Protocol: tcp
-          # 環境変数（DATABASE_URLはRDSエンドポイントを自動参照）
+          # Environment variables (DATABASE_URL auto-references RDS endpoint)
           Environment:
             - Name: DATABASE_URL
               Value: !Sub "postgresql://postgres:${DBMasterPassword}@${Database.Endpoint.Address}:5432/github_analyzer"
@@ -340,7 +337,7 @@ Resources:
               Value: !Ref GitHubClientSecret
             - Name: JWT_SECRET_KEY
               Value: !Ref JwtSecretKey
-          # ログ設定（CloudWatch Logsに出力）
+          # Log configuration (output to CloudWatch Logs)
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -348,8 +345,8 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
 
-  # ECSサービス（タスクの起動・ALBとの紐付けを管理）
-  # DependsOn: ALBListener → リスナーが先に作成されている必要がある
+  # ECS Service (manages task lifecycle and ALB integration)
+  # DependsOn: ALBListener - listener must be created first
   ECSService:
     Type: AWS::ECS::Service
     DependsOn: ALBListener
@@ -361,9 +358,8 @@ Resources:
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
-          # Public Subnetに配置（Gemini API / GitHub APIへの外向き通信が必要）
-          # NAT Gateway不使用（$32/月の節約）のためPublic Subnetに配置
-          # セキュリティはSGでALBからのみアクセス許可することで担保
+          # Placed in Public Subnet (needs outbound internet for Gemini API / GitHub API)
+          # No NAT Gateway (saves $32/month), security enforced by SG (ALB only)
           AssignPublicIp: ENABLED
           Subnets:
             - !Ref PublicSubnet1
@@ -376,7 +372,7 @@ Resources:
           TargetGroupArn: !Ref TargetGroup
 
 # ============================================================
-# Outputs - スタック作成後に確認できる値
+# Outputs
 # ============================================================
 Outputs:
   APIURL:
