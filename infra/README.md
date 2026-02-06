@@ -88,12 +88,6 @@ aws cloudformation describe-stacks \
 
 ## Step 3: GitHub OAuth設定
 ```
-Step 1: ブラウザで以下にアクセス
-https://github.com/login/oauth/authorize?client_id=Ov23li7OfGHhIqG0vuAZ&scope=read:user,repo
-Step 2: GitHubで「Authorize」を押す
-Step 3: リダイレクトされたURLからcodeをコピー
-http://github-analyzer-alb-899831337.ap-northeast-1.elb.amazonaws.com/auth/github/callback?code=ここの文字列
-
 GitHub → Settings → Developer settings → OAuth Apps → 対象アプリ
 ```
 
@@ -103,6 +97,14 @@ GitHub → Settings → Developer settings → OAuth Apps → 対象アプリ
 | Authorization callback URL | `http://<ALBのDNS名>/auth/github/callback` |
 
 ALBのDNS名は Step 2 の Outputs で確認できる。
+
+```
+Step 1: ブラウザで以下にアクセス
+https://github.com/login/oauth/authorize?client_id=Ov23li7OfGHhIqG0vuAZ&scope=read:user,repo
+Step 2: GitHubで「Authorize」を押す
+Step 3: リダイレクトされたURLからcodeをコピー
+http://github-analyzer-alb-899831337.ap-northeast-1.elb.amazonaws.com/auth/github/callback?code=ここの文字列
+```
 
 ---
 
