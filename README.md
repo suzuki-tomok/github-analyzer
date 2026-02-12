@@ -119,6 +119,10 @@ http://localhost:8001/docs
 | Docker ローカル | SQLite（app.db） |
 | AWS 本番 | RDS（PostgreSQL） |
 
+## セキュリティに関する注意
+
+GitHub Access Tokenは現在データベースに平文で保存しています。本番運用時はAWS Secrets Managerやカラムレベルの暗号化（Fernet等）による保護が必要です。
+
 ## TODO
 
 - [x] プロジェクト構成
