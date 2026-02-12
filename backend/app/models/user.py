@@ -1,7 +1,7 @@
 # app/models/user.py
 from sqlalchemy import Column, String, Integer, DateTime
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.database import Base
@@ -14,7 +14,11 @@ class User(Base):
     github_id = Column(Integer, unique=True, nullable=False)
     github_username = Column(String, nullable=False)
     github_access_token = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     analyses = relationship("Analysis", back_populates="user")

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 import httpx
 from jose import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.config import settings
 from app.dependencies import get_db, get_current_user
@@ -92,7 +92,7 @@ async def github_callback(code: str, db: Session = Depends(get_db)):
         logger.info(f"Auth | User login: {github_username}")
 
     # 4. JWT発行
-    expire = datetime.utcnow() + timedelta(days=7)
+    expire = datetime.now(timezone.utc) + timedelta(days=7)
     payload = {"sub": user.id, "exp": expire}
     jwt_token = jwt.encode(payload, settings.jwt_secret_key, algorithm="HS256")
 
