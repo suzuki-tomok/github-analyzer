@@ -253,7 +253,7 @@ def get_analysis(
     )
 
 
-@router.put(
+@router.patch(
     "/{analysis_id}",
     responses={
         401: error_responses[401],

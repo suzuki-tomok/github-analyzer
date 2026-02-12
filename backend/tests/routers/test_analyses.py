@@ -81,13 +81,13 @@ class TestGetAnalysisDetail:
 
 class TestUpdateAnalysis:
     """
-    PUT /analyses/{id}
+    PATCH /analyses/{id}
     分析のメモを更新
     """
     
     def test_success(self, client, auth_header, test_analysis):
         """正常系：メモ更新"""
-        response = client.put(
+        response = client.patch(
             f"/analyses/{test_analysis.id}",
             headers=auth_header,
             json={"memo": "Updated memo"}
@@ -97,7 +97,7 @@ class TestUpdateAnalysis:
     
     def test_not_found_404(self, client, auth_header):
         """異常系：存在しないID"""
-        response = client.put(
+        response = client.patch(
             "/analyses/nonexistent-id",
             headers=auth_header,
             json={"memo": "test"}
@@ -107,7 +107,7 @@ class TestUpdateAnalysis:
     
     def test_other_user_404(self, client, other_auth_header, test_analysis):
         """異常系：他人のデータを更新"""
-        response = client.put(
+        response = client.patch(
             f"/analyses/{test_analysis.id}",
             headers=other_auth_header,
             json={"memo": "hacked"}
@@ -117,7 +117,7 @@ class TestUpdateAnalysis:
     
     def test_memo_too_long_422(self, client, auth_header, test_analysis):
         """異常系：メモが1001文字（境界値）"""
-        response = client.put(
+        response = client.patch(
             f"/analyses/{test_analysis.id}",
             headers=auth_header,
             json={"memo": "x" * 1001}
@@ -127,7 +127,7 @@ class TestUpdateAnalysis:
     
     def test_memo_max_length_success(self, client, auth_header, test_analysis):
         """正常系：メモが1000文字（境界値）"""
-        response = client.put(
+        response = client.patch(
             f"/analyses/{test_analysis.id}",
             headers=auth_header,
             json={"memo": "x" * 1000}
@@ -137,7 +137,7 @@ class TestUpdateAnalysis:
     
     def test_no_token_401(self, client, test_analysis):
         """異常系：未認証"""
-        response = client.put(
+        response = client.patch(
             f"/analyses/{test_analysis.id}",
             json={"memo": "test"}
         )
