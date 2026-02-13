@@ -1,4 +1,6 @@
 # app/routers/analyses.py
+import asyncio
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import List
@@ -71,37 +73,42 @@ async def fetch_commits_from_github(
     commits_data = response.json()
     logger.info(f"GitHub API | Success | {len(commits_data)} commits fetched")
 
-    # 各commitの詳細を取得してテキスト化
-    lines = []
+    # 各commitの詳細を並行取得
     async with httpx.AsyncClient() as client:
-        for commit_data in commits_data:
-            sha = commit_data["sha"]
 
-            detail_response = await client.get(
+        async def fetch_detail(sha: str):
+            response = await client.get(
                 f"https://api.github.com/repos/{owner}/{repo}/commits/{sha}",
                 headers=headers,
             )
+            if response.status_code != 200:
+                return None
+            return response.json()
 
-            if detail_response.status_code != 200:
-                continue
+        details = await asyncio.gather(
+            *[fetch_detail(c["sha"]) for c in commits_data]
+        )
 
-            detail = detail_response.json()
+    lines = []
+    for detail in details:
+        if detail is None:
+            continue
 
-            lines.append(f"=== Commit: {sha[:7]} ===")
-            lines.append(f"Author: {detail['commit']['author']['name']}")
-            lines.append(f"Date: {detail['commit']['author']['date']}")
-            lines.append(f"Message: {detail['commit']['message']}")
-            lines.append("Files:")
+        lines.append(f"=== Commit: {detail['sha'][:7]} ===")
+        lines.append(f"Author: {detail['commit']['author']['name']}")
+        lines.append(f"Date: {detail['commit']['author']['date']}")
+        lines.append(f"Message: {detail['commit']['message']}")
+        lines.append("Files:")
 
-            for f in detail.get("files", []):
-                lines.append(
-                    f"  - {f.get('filename', '')} (+{f.get('additions', 0)}, -{f.get('deletions', 0)})"
-                )
-                patch = f.get("patch", "")
-                if patch:
-                    lines.append(f"    Diff: {patch[:200]}...")
+        for f in detail.get("files", []):
+            lines.append(
+                f"  - {f.get('filename', '')} (+{f.get('additions', 0)}, -{f.get('deletions', 0)})"
+            )
+            patch = f.get("patch", "")
+            if patch:
+                lines.append(f"    Diff: {patch[:200]}...")
 
-            lines.append("")
+        lines.append("")
 
     return "\n".join(lines)
 
