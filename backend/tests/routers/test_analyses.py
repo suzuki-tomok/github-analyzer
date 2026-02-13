@@ -291,3 +291,23 @@ class TestCreateAnalysis:
         )
         
         assert response.status_code == 401
+
+    @patch("app.routers.analyses.fetch_commits_from_github")
+    @patch("app.routers.analyses.analyze_commits")
+    def test_gemini_api_timeout_500(self, mock_gemini, mock_github, client, auth_header):
+        """異常系：Gemini APIタイムアウト"""
+        mock_github.return_value = "=== Commit: abc1234 ===\nMessage: test"
+        mock_gemini.side_effect = TimeoutError("Gemini API timeout")
+
+        response = client.post(
+            "/analyses",
+            headers=auth_header,
+            json={
+                "repo_url": "https://github.com/testuser/testrepo",
+                "branch": "main",
+                "limit": 10,
+            },
+        )
+
+        assert response.status_code == 500
+        assert response.json()["code"] == "GEMINI_API_ERROR"

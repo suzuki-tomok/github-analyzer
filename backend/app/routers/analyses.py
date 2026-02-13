@@ -85,9 +85,7 @@ async def fetch_commits_from_github(
                 return None
             return response.json()
 
-        details = await asyncio.gather(
-            *[fetch_detail(c["sha"]) for c in commits_data]
-        )
+        details = await asyncio.gather(*[fetch_detail(c["sha"]) for c in commits_data])
 
     lines = []
     for detail in details:
