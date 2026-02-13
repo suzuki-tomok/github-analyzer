@@ -6,23 +6,24 @@ GitHubリポジトリをAIで分析し、開発者の評価スコアとレポー
 
 - FastAPI
 - Google Gemini API
-- SQLAlchemy
+- SQLAlchemy + Alembic
 - GitHub OAuth + JWT
 - httpx
 - python-jose
 - Docker
 - pytest / ruff / GitHub Actions (CI)
 
-## インフラ（AWS）
+## アーキテクチャ
 
-- ECS Fargate
-- RDS (PostgreSQL)
-- ALB
-- ECR
+- **FastAPI** — GitHub OAuth認証、分析実行、履歴管理のREST API
+- **Gemini API** — コミット履歴をAIで分析し、スコアとレポートを生成
+- **Swagger UI** — API仕様書・動作確認（/docs）
+- **AWS** — ECS Fargate + RDS（PostgreSQL）+ ALB + ECR
 
-## 必要環境
+## 画面イメージ
 
-- Python 3.11+
+### Swagger UI
+![Swagger UI](docs/screenshots/swagger-ui.png)
 
 ## セットアップ(Windows11)
 ```bash
@@ -32,26 +33,15 @@ source venv/Scripts/activate
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
 cp .env.example .env
+alembic upgrade head
 uvicorn app.main:app --reload --port 8001
 ```
 
-## ライブラリ追加時
-```bash
-pip install ライブラリ名
-pip freeze > requirements.txt
-```
+### アクセス先
 
-## GitHub OAuth認証フロー
-
-1. 下記URLにブラウザでアクセス（CLIENT_IDは.envの値）
-```
-https://github.com/login/oauth/authorize?client_id=YOUR_CLIENT_ID&scope=read:user,repo
-```
-2. GitHubで「Authorize」を押す
-3. リダイレクト先のURLから`?code=xxxxx`をコピー
-4. `/auth/github/callback`にcodeをPOST
-5. 返ってきた`access_token`（JWT）を使って認証
-
+| 画面 | URL |
+|------|-----|
+| Swagger UI | http://localhost:8001/docs |
 
 ## マイグレーション
 
@@ -59,14 +49,12 @@ Alembicでデータベースのスキーマを管理しています。
 
 ### 初期セットアップ（済み）
 ```bash
-# Alembicの初期化
 pip install alembic
 alembic init alembic
 
 # alembic/env.py にモデルとDB接続を設定
 # app/main.py の Base.metadata.create_all() を削除
 
-# 初回マイグレーション生成・適用
 alembic revision --autogenerate -m "initial"
 alembic upgrade head
 ```
@@ -106,6 +94,17 @@ alembic history
 | 本番デプロイ時 | `upgrade head` |
 | 変更を取り消したい | `downgrade -1` |
 
+## GitHub OAuth認証フロー
+
+1. 下記URLにブラウザでアクセス（CLIENT_IDは.envの値）
+```
+https://github.com/login/oauth/authorize?client_id=YOUR_CLIENT_ID&scope=read:user,repo
+```
+2. GitHubで「Authorize」を押す
+3. リダイレクト先のURLから`?code=xxxxx`をコピー
+4. `/auth/github/callback`にcodeをPOST
+5. 返ってきた`access_token`（JWT）を使って認証
+
 ## API
 
 ### 認証
@@ -134,7 +133,53 @@ alembic history
 | commit_message | コミットメッセージの質 |
 | activity | 稼働の安定性 |
 
-## Docker
+## 設計判断
+
+### なぜ FastAPI か
+GitHub API・Gemini APIとの連携で非同期I/Oが必要なため、async/awaitをネイティブサポートするFastAPIを採用。もう一つのポートフォリオ（education-reserve）ではDjango + DRFを使用しており、両フレームワークの特性を比較して学んでいる。
+
+### service層の分離
+ビジネスロジック（GitHub API取得・Gemini分析・DB保存）をrouterから分離し、app/services/に配置。routerはリクエスト/レスポンスの処理に専念させ、テスタビリティと可読性を確保している。
+
+### 認証方式
+GitHub OAuthで取得したユーザー情報を元に、自前でJWTを発行する方式を採用。GitHubのアクセストークンはAPI呼び出しにのみ使用し、認証・認可はJWTで管理している。
+
+### インフラ構成（ECS Fargate + RDS）
+コンテナ管理の学習を目的にECS Fargateを採用。EC2と異なりサーバー管理が不要で、Dockerイメージをそのままデプロイできる。CloudFormationでIaC化し、もう一つのポートフォリオ（education-reserve）のEC2構成と比較して学んでいる。
+
+## 開発ガイド
+
+### push前の確認手順
+```bash
+# リントチェック
+ruff check .
+
+# フォーマットチェック
+ruff format . --check
+
+# フォーマット自動修正
+ruff format .
+
+# テスト実行
+pytest -v
+```
+
+### ライブラリ追加時
+```bash
+pip install ライブラリ名
+pip freeze > requirements.txt
+```
+
+### CI（GitHub Actions）
+
+`main` ブランチへのpush・PRで自動実行されます。
+
+| ステップ | 内容 |
+|---------|------|
+| Lint | `ruff check .` / `ruff format . --check` |
+| Test | `pytest -v` |
+
+## Docker環境
 
 ### 起動
 ```bash
@@ -143,11 +188,6 @@ docker-compose up --build
 ```
 
 ### 停止
-```bash
-Ctrl + C
-```
-
-または
 ```bash
 docker-compose down
 ```
@@ -195,3 +235,10 @@ GitHub Access Tokenは現在データベースに平文で保存しています�
 - [x] IaC（CloudFormation）
 - [x] ER図
 - [x] シーケンス図
+- [x] Alembicによるマイグレーション管理
+- [x] service層の分離（Fat Controller解消）
+- [x] commit詳細取得の並行化（asyncio.gather）
+- [x] datetime.utcnow()の非推奨対応
+- [x] PUT → PATCHへのRESTful対応
+- [x] テスト拡充（Gemini APIタイムアウト）
+- [x] 画面スクショ追加
