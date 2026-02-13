@@ -52,6 +52,60 @@ https://github.com/login/oauth/authorize?client_id=YOUR_CLIENT_ID&scope=read:use
 4. `/auth/github/callback`にcodeをPOST
 5. 返ってきた`access_token`（JWT）を使って認証
 
+
+## マイグレーション
+
+Alembicでデータベースのスキーマを管理しています。
+
+### 初期セットアップ（済み）
+```bash
+# Alembicの初期化
+pip install alembic
+alembic init alembic
+
+# alembic/env.py にモデルとDB接続を設定
+# app/main.py の Base.metadata.create_all() を削除
+
+# 初回マイグレーション生成・適用
+alembic revision --autogenerate -m "initial"
+alembic upgrade head
+```
+
+### モデル追加時
+新しいモデルを作成したら `alembic/env.py` にimportを追加してください。
+```python
+# alembic/env.py
+from app.models import User, Analysis, NewModel  # ← 追加
+```
+
+### 日常の使い方
+```bash
+# モデル変更後、マイグレーションファイルを自動生成
+alembic revision --autogenerate -m "変更内容の説明"
+
+# マイグレーションを適用
+alembic upgrade head
+
+# 現在の状態を確認
+alembic current
+
+# 1つ前に戻す
+alembic downgrade -1
+
+# マイグレーション履歴を確認
+alembic history
+```
+
+### いつ実行するか
+
+| 場面 | コマンド |
+|------|---------|
+| モデルにカラム追加・変更・削除した | `revision --autogenerate` → `upgrade head` |
+| 新しいモデルを追加した | `env.py` にimport追加 → `revision --autogenerate` → `upgrade head` |
+| 初回セットアップ時 | `upgrade head` |
+| 本番デプロイ時 | `upgrade head` |
+| 変更を取り消したい | `downgrade -1` |
+
 ## API
 
 ### 認証
@@ -66,7 +120,7 @@ https://github.com/login/oauth/authorize?client_id=YOUR_CLIENT_ID&scope=read:use
 | POST | /analyses | 分析実行 |
 | GET | /analyses | 履歴一覧 |
 | GET | /analyses/{id} | 詳細取得 |
-| PUT | /analyses/{id} | メモ更新 |
+| PATCH | /analyses/{id} | メモ更新 |
 | DELETE | /analyses/{id} | 削除 |
 
 ## 評価項目

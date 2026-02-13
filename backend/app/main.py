@@ -2,14 +2,10 @@
 from fastapi import FastAPI
 
 from app.routers import auth, analyses
-from app.database import engine, Base
 from app.exceptions import AppException, app_exception_handler
 from app.middleware import LoggingMiddleware
 from app.logger import logger
 from app.config import settings
-
-# テーブル作成
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="github-analyzer",
