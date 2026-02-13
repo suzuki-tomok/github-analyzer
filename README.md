@@ -23,7 +23,7 @@ GitHubリポジトリをAIで分析し、開発者の評価スコアとレポー
 ## 画面イメージ
 
 ### Swagger UI
-![Swagger UI](docs/screenshots/swagger-ui.png)
+![Swagger UI](backend/docs/screenshots/swagger-ui.png)
 
 ## セットアップ(Windows11)
 ```bash
