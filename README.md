@@ -20,6 +20,34 @@ GitHubリポジトリをAIで分析し、開発者の評価スコアとレポー
 - **Swagger UI** — API仕様書・動作確認（/docs）
 - **AWS** — ECS Fargate + RDS（PostgreSQL）+ ALB + ECR
 
+## ER図
+
+```mermaid
+erDiagram
+    users ||--o{ analyses : "has"
+
+    users {
+        id string PK
+        github_id integer UK
+        github_username string
+        github_access_token string
+        created_at datetime
+        updated_at datetime
+    }
+
+    analyses {
+        id string PK
+        user_id string FK
+        repo_url string
+        branch string
+        scores json
+        report json
+        memo string
+        created_at datetime
+        updated_at datetime
+    }
+```
+
 ## 画面イメージ
 
 ### Swagger UI
